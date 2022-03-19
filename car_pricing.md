@@ -30,6 +30,12 @@ and are affected by other variables.
 Having downloaded the dataset from Kaggle as a .csv file, I read it in
 using `read.csv()` and stored the data in a data frame, called `cars`.
 
+``` r
+file <- c("/Users/ghoye/Documents/CarPrice_Assignment.csv")
+cars <- read.csv(file, header = TRUE)
+kable(head(cars))
+```
+
 | car\_ID | symboling | CarName                  | fueltype | aspiration | doornumber | carbody     | drivewheel | enginelocation | wheelbase | carlength | carwidth | carheight | curbweight | enginetype | cylindernumber | enginesize | fuelsystem | boreratio | stroke | compressionratio | horsepower | peakrpm | citympg | highwaympg | price |
 |--------:|----------:|:-------------------------|:---------|:-----------|:-----------|:------------|:-----------|:---------------|----------:|----------:|---------:|----------:|-----------:|:-----------|:---------------|-----------:|:-----------|----------:|-------:|-----------------:|-----------:|--------:|--------:|-----------:|------:|
 |       1 |         3 | alfa-romero giulia       | gas      | std        | two        | convertible | rwd        | front          |      88.6 |     168.8 |     64.1 |      48.8 |       2548 | dohc       | four           |        130 | mpfi       |      3.47 |   2.68 |              9.0 |        111 |    5000 |      21 |         27 | 13495 |
@@ -78,13 +84,23 @@ For example, one can determine whether the size of a car’s engine and
 the car’s horsepower are correlated, and we can first examine a
 scatterplot of the data from those two variables.
 
-![](readme_files/figure-gfm/unnamed-chunk-2-1.png)<!-- --> The
+``` r
+plot(cars$enginesize, cars$horsepower, col = alpha("firebrick2", 0.75), 
+     ylim = c(0, 300), xlim = c(0, 400),
+     xlab = "Engine Size", ylab = "Horsepower", main = "Car Engine Sizes and Horsepower")
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-2-1.png)<!-- --> The
 relationship between these two variables is linear and positive—as the
 engine size increases, so does the horsepower—and the points are grouped
 relatively close together.
 
 We can also calculate the correlation coefficient (*r*) to see exactly
 how strong this association is:
+
+``` r
+cor(cars$enginesize, cars$horsepower)
+```
 
     ## [1] 0.8097687
 
@@ -94,14 +110,24 @@ very strong, at approximately 81%.
 We can view the scatterplots of all variables (quantitative, continuous
 ones, that is) by using the `pairs()` function.
 
-![](readme_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+``` r
+pairs(cars[,c(10:14,17,19:26)]) # Using only quantitative/continuous variables
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
 
 The sheer number of plots might appear overwhelming, but a closer look
 reveals that certain factors, such as the car’s wheel base and its
 length, are strongly associated. We can also view plots of each
 variable’s association with price specifically.
 
-![](readme_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+``` r
+cars_long <- gather(cars[,c(10:13,17,19:22, 24:26)], key, value, -price)
+# cars_long
+ggplot(cars_long, aes(x = price, y = value)) + geom_point() + facet_grid(. ~ key)
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
 
 It appears from these plots that `enginesize` and `horsepower` might
 have a strong positive relationship with `price`, whereas `citympg` and
@@ -109,9 +135,22 @@ have a strong positive relationship with `price`, whereas `citympg` and
 respective correlation coefficients of all variables and price using the
 `correlate` function from the `corrr` package.
 
+``` r
+cor_tib <- correlate(cars[,c(10:14,17,19:26)])
+```
+
     ## 
     ## Correlation method: 'pearson'
     ## Missing treated using: 'pairwise.complete.obs'
+
+``` r
+cor_tib_price <- data.frame(matrix(data = c(cor_tib$term, cor_tib$price), nrow = length(cor_tib$term), ncol = 2))
+colnames(cor_tib_price) <- c("Variable", "r")
+cor_tib_price <- cor_tib_price[-(nrow(cor_tib_price)),]
+cor_tib_price$r <- round(as.numeric(cor_tib_price$r), 6)
+cor_tib_price <- cor_tib_price %>% arrange(desc(r))
+kable(cor_tib_price)
+```
 
 | Variable         |         r |
 |:-----------------|----------:|
@@ -134,7 +173,21 @@ with `curbweight` and `carwidth`—are indeed positively correlated with
 `price`, and the two variables relating to miles per gallon are
 strongly, yet negatively correlated with price.
 
-![](readme_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->![](readme_files/figure-gfm/unnamed-chunk-7-2.png)<!-- -->
+``` r
+plot(cars$curbweight, cars$price, col = alpha("firebrick2", 0.75), 
+     ylim = c(0, 60000), xlim = c(1000, 5000), cex.axis = 0.7,
+     xlab = "Curb Weight", ylab = "Price", main = "Car Curb Weights and Price")
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+
+``` r
+plot(cars$highwaympg, cars$price, col = alpha("firebrick2", 0.75), 
+     ylim = c(0, 60000), xlim = c(10, 60), cex.axis = 0.7,
+     xlab = "MPG (Highway)", ylab = "Price", main = "Car MPG (Highway) and Price")
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-7-2.png)<!-- -->
 
 ## Simple Linear Regression
 
@@ -146,6 +199,11 @@ change in the latter. We can, for instance, select the width of a car as
 the explanatory variable, and the price of the car as the response
 variable.
 
+``` r
+smod1 <- lm(cars$price ~ cars$carwidth)
+smod1
+```
+
     ## 
     ## Call:
     ## lm(formula = cars$price ~ cars$carwidth)
@@ -154,7 +212,14 @@ variable.
     ##   (Intercept)  cars$carwidth  
     ##       -173095           2828
 
-![](readme_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+``` r
+plot(cars$carwidth, cars$price, col = alpha("firebrick2", 0.75), 
+     ylim = c(0, 60000), xlim = c(60, 75), cex.axis = 0.7,
+     xlab = "Car Width", ylab = "Price", main = "Car Widths and Price")
+abline(smod1,col="goldenrod2")
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 
 As shown in the plot, the regression line fits the data reasonably well,
 with a good portion of the points falling around the line. Even so,
@@ -180,6 +245,14 @@ Step 2) For this test, I selected the *F* statistic, which is *F* =
 $\\frac{Mean Sum of Squares (Regression)}{Mean Sum of Squares (Residual)}$
 with 1 and *n* - 2 degrees of freedom.
 
+``` r
+# Calculate the critical value
+CV <- qt(1-0.05/2, df=nrow(cars)-2)
+CV
+```
+
+    ## [1] 1.971719
+
 Step 3) The *F*-distribution critical value is *F*<sub>1,n-2,a</sub> =
 *F*<sub>1,203,0.05</sub> = 1.972. Therefore, *H*<sub>0</sub> must be
 rejected if *F* ≥ 1.972. Otherwise, there is not sufficient evidence to
@@ -187,10 +260,29 @@ reject the null hypothesis.
 
 Step 4) See the calculations below.
 
+``` r
+# ANOVA table
+kable(anova(smod1))
+```
+
 |               |  Df |     Sum Sq |    Mean Sq |  F value | Pr(&gt;F) |
 |:--------------|----:|-----------:|-----------:|---------:|----------:|
 | cars$carwidth |   1 | 7506797404 | 7506797404 | 276.4236 |         0 |
 | Residuals     | 203 | 5512841958 |   27156857 |       NA |        NA |
+
+``` r
+# Calculate the F statistic
+F <- anova(smod1)[1,3]/anova(smod1)[2,3]
+F
+```
+
+    ## [1] 276.4236
+
+``` r
+# Sanity check
+# anova(smod1)[1,4]
+# summary(smod1)
+```
 
 Step 5) Because *F* = 276.4236459 &gt; 1.972, there is sufficient
 evidence to reject the null hypothesis and conclude that *β*<sub>1</sub>
@@ -200,10 +292,28 @@ Furthermore, one can calculate *R*<sup>2</sup>, the estimate of the
 variability of the response variable given a value of the explanatory
 variable.
 
+``` r
+# ANOVA table again for reference
+kable(anova(smod1))
+```
+
 |               |  Df |     Sum Sq |    Mean Sq |  F value | Pr(&gt;F) |
 |:--------------|----:|-----------:|-----------:|---------:|----------:|
 | cars$carwidth |   1 | 7506797404 | 7506797404 | 276.4236 |         0 |
 | Residuals     | 203 | 5512841958 |   27156857 |       NA |        NA |
+
+``` r
+# Calculate regression sum of squares, residual sum of squares, and total sum of squares
+reg_SS <- anova(smod1)[1,2]
+res_SS <- anova(smod1)[2,2]
+total_SS <- reg_SS + res_SS
+
+# Calculate R^2
+r2 <- reg_SS / total_SS
+r2
+```
+
+    ## [1] 0.5765749
 
 According to the above calculations, *R*<sup>2</sup> is 0.5765749. This
 means that 57.66% of the variability in the price of a car can be
@@ -211,6 +321,10 @@ explained by the car’s width.
 
 Finally, one can determine the confidence interval for *β*<sub>1</sub>
 with a confidence level of 90%.
+
+``` r
+confint(smod1, level = 0.9)
+```
 
     ##                       5 %        95 %
     ## (Intercept)   -191627.800 -154562.674
@@ -233,7 +347,13 @@ gallon (MPG) in the city has on the car’s price?
 
 Let us first look at a scatterplot of MPG in the city against car price.
 
-![](readme_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
+``` r
+plot(cars$citympg, cars$price, col = alpha("firebrick2", 0.75), 
+     ylim = c(0, 60000), xlim = c(10, 60), cex.axis = 0.7,
+     xlab = "MPG (City)", ylab = "Price", main = "Car MPG (City) and Price")
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
 
 As determined by the initial correlation coefficient that we calculated
 (-0.69), the association between these two variables is moderately
@@ -245,7 +365,16 @@ visualizes the distances between the actual and predicted values of the
 response variable (price) for a given value of the explanatory variable
 (city MPG).
 
-![](readme_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
+``` r
+smod2 <- lm(cars$price ~ cars$citympg)
+
+plot(x = smod2$fitted.values, y = smod2$residuals, main = "Residuals vs. Fitted Values", 
+     xlab = "Fitted Values", ylab = "Residuals", col=alpha("firebrick2", 0.75),
+     xlim = c(-10000, 25000), ylim = c(-15000, 25000))
+abline(h = 0,col="goldenrod2")
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
 
 From this plot, it is clear that not only is the data nonlinear, but
 also that the variability in the response is not constant across the
@@ -257,23 +386,44 @@ regression—that the variability remains relatively constant.
 Returning to the previous example, the relationship between car width
 and price, we can view the corresponding residual plot:
 
-![](readme_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
+``` r
+plot(x = smod1$fitted.values, y = smod1$residuals, main = "Residuals vs. Fitted Values", 
+     xlab = "Fitted Values", ylab = "Residuals", col=alpha("firebrick2", 0.75),
+     xlim = c(-5000, 35000), ylim = c(-20000, 30000))
+abline(h = 0,col="goldenrod2")
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
 
 Obviously, there are quite a few stray points, but they generally flow
 straight across the regression line.
 
-![](readme_files/figure-gfm/unnamed-chunk-16-1.png)<!-- -->
+``` r
+hist(x = smod1$residuals, main = "Residuals", xlab = "Residuals",
+     col = "firebrick2", xlim = c(-20000, 40000), ylim = c(0, 150))
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-16-1.png)<!-- -->
 
 The distribution of the residuals is roughly bell-shaped, but there is a
 tail to the right, which might suggest the presence of outliers.
 
-![](readme_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
+``` r
+plot(smod1, which = 1)
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
 
 This plot has identified observations 17, 128, 129—the BMW X5, Porsche
 Cayenne, and Porsche Boxter, respectively—as outliers, and observation
 127 (Porsche Panamera) also appears to be an outlier. If we removed one,
 two, three, or all of those points we would obtain the following model
 results:
+
+``` r
+# Original model
+smod1
+```
 
     ## 
     ## Call:
@@ -283,6 +433,13 @@ results:
     ##   (Intercept)  cars$carwidth  
     ##       -173095           2828
 
+``` r
+# Row 17 removed
+cars2 <- cars[-(c(17)),]
+smod1a <- lm(cars2$price ~ cars2$carwidth)
+smod1a
+```
+
     ## 
     ## Call:
     ## lm(formula = cars2$price ~ cars2$carwidth)
@@ -290,6 +447,15 @@ results:
     ## Coefficients:
     ##    (Intercept)  cars2$carwidth  
     ##        -170043            2780
+
+``` r
+#summary(smod1a)
+
+# Row 127 removed
+cars3 <- cars[-(c(127)),]
+smod1b <- lm(cars3$price ~ cars3$carwidth)
+smod1b
+```
 
     ## 
     ## Call:
@@ -299,6 +465,15 @@ results:
     ##    (Intercept)  cars3$carwidth  
     ##        -174601            2849
 
+``` r
+#summary(smod1b)
+
+# Row 128 removed
+cars4 <- cars[-(c(128)),]
+smod1c <- lm(cars4$price ~ cars4$carwidth)
+smod1c
+```
+
     ## 
     ## Call:
     ## lm(formula = cars4$price ~ cars4$carwidth)
@@ -306,6 +481,15 @@ results:
     ## Coefficients:
     ##    (Intercept)  cars4$carwidth  
     ##        -174704            2850
+
+``` r
+#summary(smod1c)
+
+# Row 129 removed
+cars5 <- cars[-(c(129)),]
+smod1d <- lm(cars5$price ~ cars5$carwidth)
+smod1d
+```
 
     ## 
     ## Call:
@@ -315,6 +499,15 @@ results:
     ##    (Intercept)  cars5$carwidth  
     ##        -174911            2853
 
+``` r
+#summary(smod1d)
+
+# Both rows 17 and 127 removed
+cars6 <- cars[-(c(17, 127)),]
+smod1e <- lm(cars6$price ~ cars6$carwidth)
+smod1e
+```
+
     ## 
     ## Call:
     ## lm(formula = cars6$price ~ cars6$carwidth)
@@ -322,6 +515,15 @@ results:
     ## Coefficients:
     ##    (Intercept)  cars6$carwidth  
     ##        -171545            2801
+
+``` r
+#summary(smod1e)
+
+# Both rows 17 and 128 removed
+cars7 <- cars[-(c(17, 128)),]
+smod1f <- lm(cars7$price ~ cars7$carwidth)
+smod1f
+```
 
     ## 
     ## Call:
@@ -331,6 +533,15 @@ results:
     ##    (Intercept)  cars7$carwidth  
     ##        -171647            2802
 
+``` r
+#summary(smod1f)
+
+# Both rows 17 and 129 removed
+cars8 <- cars[-(c(17, 129)),]
+smod1g <- lm(cars8$price ~ cars8$carwidth)
+smod1g
+```
+
     ## 
     ## Call:
     ## lm(formula = cars8$price ~ cars8$carwidth)
@@ -338,6 +549,15 @@ results:
     ## Coefficients:
     ##    (Intercept)  cars8$carwidth  
     ##        -171853            2805
+
+``` r
+#summary(smod1g)
+
+# Both rows 127 and 128 removed
+cars9 <- cars[-(c(127, 128)),]
+smod1h <- lm(cars9$price ~ cars9$carwidth)
+smod1h
+```
 
     ## 
     ## Call:
@@ -347,6 +567,15 @@ results:
     ##    (Intercept)  cars9$carwidth  
     ##        -176228            2872
 
+``` r
+#summary(smod1h)
+
+# Both rows 127 and 129 removed
+cars10 <- cars[-(c(127, 129)),]
+smod1i <- lm(cars10$price ~ cars10$carwidth)
+smod1i
+```
+
     ## 
     ## Call:
     ## lm(formula = cars10$price ~ cars10$carwidth)
@@ -354,6 +583,15 @@ results:
     ## Coefficients:
     ##     (Intercept)  cars10$carwidth  
     ##         -176436             2875
+
+``` r
+#summary(smod1i)
+
+# Both rows 128 and 129 removed
+cars11 <- cars[-(c(128, 129)),]
+smod1j <- lm(cars11$price ~ cars11$carwidth)
+smod1j
+```
 
     ## 
     ## Call:
@@ -363,6 +601,15 @@ results:
     ##     (Intercept)  cars11$carwidth  
     ##         -176541             2876
 
+``` r
+#summary(smod1j)
+
+# Rows 17, 127, and 128 removed
+cars12 <- cars[-(c(17, 127, 128)),]
+smod1k <- lm(cars12$price ~ cars12$carwidth)
+smod1k
+```
+
     ## 
     ## Call:
     ## lm(formula = cars12$price ~ cars12$carwidth)
@@ -370,6 +617,15 @@ results:
     ## Coefficients:
     ##     (Intercept)  cars12$carwidth  
     ##         -173167             2824
+
+``` r
+#summary(smod1k)
+
+# Rows 17, 127, and 129 removed
+cars13 <- cars[-(c(17, 127, 129)),]
+smod1l <- lm(cars13$price ~ cars13$carwidth)
+smod1l
+```
 
     ## 
     ## Call:
@@ -379,6 +635,15 @@ results:
     ##     (Intercept)  cars13$carwidth  
     ##         -173374             2827
 
+``` r
+#summary(smod1l)
+
+# Rows 17, 128, and 129 removed
+cars14 <- cars[-(c(17, 128, 129)),]
+smod1m <- lm(cars14$price ~ cars14$carwidth)
+smod1m
+```
+
     ## 
     ## Call:
     ## lm(formula = cars14$price ~ cars14$carwidth)
@@ -386,6 +651,15 @@ results:
     ## Coefficients:
     ##     (Intercept)  cars14$carwidth  
     ##         -173477             2828
+
+``` r
+#summary(smod1m)
+
+# Rows 127, 128, and 129 removed
+cars15 <- cars[-(c(127, 128, 129)),]
+smod1n <- lm(cars15$price ~ cars15$carwidth)
+smod1n
+```
 
     ## 
     ## Call:
@@ -395,6 +669,15 @@ results:
     ##     (Intercept)  cars15$carwidth  
     ##         -178084             2898
 
+``` r
+#summary(smod1n)
+
+# All outliers removed
+cars16 <- cars[-(c(17, 127, 128, 129)),]
+smod1o <- lm(cars16$price ~ cars16$carwidth)
+smod1o
+```
+
     ## 
     ## Call:
     ## lm(formula = cars16$price ~ cars16$carwidth)
@@ -403,6 +686,10 @@ results:
     ##     (Intercept)  cars16$carwidth  
     ##         -175017             2850
 
+``` r
+#summary(smod1o)
+```
+
 Of these models, the one that removes observations 17, 128, and 129
 (model `smod1m`) performs the best in terms of matching the original
 *β*<sub>1</sub> estimate of 2827.767. That being said, since none of the
@@ -410,7 +697,30 @@ points seems to be an influence point (that is, a point that has a
 significant impact on the regression line calculations), the model that
 removes all identified outliers (`smod1o`) would be preferred.
 
-![](readme_files/figure-gfm/unnamed-chunk-19-1.png)<!-- -->![](readme_files/figure-gfm/unnamed-chunk-19-2.png)<!-- -->![](readme_files/figure-gfm/unnamed-chunk-19-3.png)<!-- -->
+``` r
+plot(cars16$carwidth, cars16$price, col = alpha("firebrick2", 0.75), 
+     ylim = c(0, 60000), xlim = c(60, 75), cex.axis = 0.7,
+     xlab = "Car Width", ylab = "Price", main = "Car Widths and Price")
+abline(smod1o,col="goldenrod2")
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-19-1.png)<!-- -->
+
+``` r
+plot(x = smod1o$fitted.values, y = smod1o$residuals, main = "Residuals vs. Fitted Values", 
+     xlab = "Fitted Values", ylab = "Residuals", col=alpha("firebrick2", 0.75),
+     xlim = c(-5000, 35000), ylim = c(-20000, 30000))
+abline(h = 0,col="goldenrod2")
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-19-2.png)<!-- -->
+
+``` r
+hist(x = smod1o$residuals, main = "Residuals (Outliers Removed)", xlab = "Residuals",
+     col = "firebrick2", xlim = c(-20000, 30000), ylim = c(0, 150))
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-19-3.png)<!-- -->
 
 Not only does the new model remove the outliers, but the tail in the
 histogram has also been eliminated, resulting in a more normal-looking
@@ -422,6 +732,11 @@ Having performed a regression with a single explanatory variable, we can
 also create a model with multiple factors, such as the car’s engine
 size, width, peak revolutions per minute (RPM), and bore ratio.
 
+``` r
+mmod1 <- lm(cars$price ~ cars$enginesize + cars$carwidth + cars$peakrpm + cars$boreratio)
+mmod1
+```
+
     ## 
     ## Call:
     ## lm(formula = cars$price ~ cars$enginesize + cars$carwidth + cars$peakrpm + 
@@ -432,6 +747,10 @@ size, width, peak revolutions per minute (RPM), and bore ratio.
     ##      -83547.018          134.263          951.279            2.555  
     ##  cars$boreratio  
     ##        1199.794
+
+``` r
+#summary(mmod1)
+```
 
 Hence, the least-squares regression equation would be: *ŷ* = -83547.018
 + 134.263*x*<sub>EngineSize</sub> + 951.279*x*<sub>Width</sub> +
@@ -455,6 +774,10 @@ rejected. If not, then *H*<sub>0</sub> cannot be rejected.
 
 Step 4) The values for the *F*-statistic and *p*-value can be calculated
 by calling the `summary()` function.
+
+``` r
+summary(mmod1)
+```
 
     ## 
     ## Call:
@@ -496,6 +819,10 @@ adjusting for engine size, width, and bore ratio. Bore ratio, however,
 is not significant, since its *p*-value is greater than the confidence
 level (0.05).
 
+``` r
+confint(mmod1)
+```
+
     ##                         2.5 %        97.5 %
     ## (Intercept)     -1.050211e+05 -62072.943267
     ## cars$enginesize  1.163741e+02    152.150949
@@ -517,13 +844,29 @@ increases by $951.28. Lastly, for each one-revolution-per-minute
 increase in peak RPM—taking the other factors into account—the price
 increases by only $2.56.
 
-![](readme_files/figure-gfm/unnamed-chunk-23-1.png)<!-- -->
+``` r
+plot(x = mmod1$fitted.values, y = mmod1$residuals, main = "Residuals vs. Fitted Values", 
+     xlab = "Fitted Values", ylab = "Residuals", col=alpha("firebrick2", 0.75),
+     xlim = c(-10000, 50000), ylim = c(-10000, 20000))
+abline(h = 0,col="goldenrod2")
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-23-1.png)<!-- -->
 
 Upon viewing a residual plot of this multiple linear regression model,
 the form is not very linear, but that can possibly be resolved by
 removing outliers.
 
-![](readme_files/figure-gfm/unnamed-chunk-24-1.png)<!-- -->
+``` r
+MLR_box <- boxplot(x = mmod1$residuals, main = "Residuals", ylab = "Residuals", col=c("red"),
+        horizontal=TRUE, ylim = c(-10000, 20000))
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-24-1.png)<!-- -->
+
+``` r
+MLR_box
+```
 
     ## $stats
     ##            [,1]
@@ -553,6 +896,10 @@ removing outliers.
 
 A boxplot of the residuals has identified several outliers:
 
+``` r
+MLR_box$out
+```
+
     ##        15        17        50       102       104       127       128       129 
     ##  7623.648 14070.723 -8403.586 -7915.237 -7915.237  8635.047 10135.047 13135.047
 
@@ -563,6 +910,12 @@ respectively.
 Since we have already identified and removed some of these points in
 previous models, let us see how much a model with all of them removed
 compares with the original MLR model.
+
+``` r
+# Original model
+mmod1 <- lm(cars$price ~ cars$enginesize + cars$carwidth + cars$peakrpm + cars$boreratio)
+mmod1
+```
 
     ## 
     ## Call:
@@ -575,6 +928,13 @@ compares with the original MLR model.
     ##  cars$boreratio  
     ##        1199.794
 
+``` r
+# All outliers removed
+cars17 <- cars[-(c(15, 17, 50, 102, 104, 127, 128, 129)),]
+mmod1a <- lm(cars17$price ~ cars17$enginesize + cars17$carwidth + cars17$peakrpm + cars17$boreratio)
+mmod1a
+```
+
     ## 
     ## Call:
     ## lm(formula = cars17$price ~ cars17$enginesize + cars17$carwidth + 
@@ -585,6 +945,10 @@ compares with the original MLR model.
     ##        -93195.776            119.919           1278.831              1.689  
     ##  cars17$boreratio  
     ##          -569.589
+
+``` r
+summary(mmod1)
+```
 
     ## 
     ## Call:
@@ -608,6 +972,10 @@ compares with the original MLR model.
     ## Residual standard error: 3468 on 200 degrees of freedom
     ## Multiple R-squared:  0.8152, Adjusted R-squared:  0.8115 
     ## F-statistic: 220.6 on 4 and 200 DF,  p-value: < 2.2e-16
+
+``` r
+summary(mmod1a)
+```
 
     ## 
     ## Call:
@@ -638,12 +1006,40 @@ the original model, it was identified as a significant predictor of car
 prices. The *R*<sup>2</sup> values are fairly similar, and the
 *p*-values are the same.
 
-![](readme_files/figure-gfm/unnamed-chunk-27-1.png)<!-- -->![](readme_files/figure-gfm/unnamed-chunk-27-2.png)<!-- -->
-The above plots seem to show that removing the outliers did not alter
-the spread of the residuals too much, and now the plot looks more linear
-in form.
+``` r
+plot(x = mmod1$fitted.values, y = mmod1$residuals, main = "Residuals vs. Fitted Values (Original)", 
+     xlab = "Fitted Values", ylab = "Residuals", col=alpha("firebrick2", 0.75),
+     xlim = c(-10000, 50000), ylim = c(-10000, 20000))
+abline(h = 0,col="goldenrod2")
+```
 
-![](readme_files/figure-gfm/unnamed-chunk-28-1.png)<!-- -->![](readme_files/figure-gfm/unnamed-chunk-28-2.png)<!-- -->
+![](car_pricing_files/figure-gfm/unnamed-chunk-27-1.png)<!-- -->
+
+``` r
+plot(x = mmod1a$fitted.values, y = mmod1a$residuals, main = "Residuals vs. Fitted Values (No Outliers)", 
+     xlab = "Fitted Values", ylab = "Residuals", col=alpha("firebrick2", 0.75),
+     xlim = c(-10000, 50000), ylim = c(-10000, 20000))
+abline(h = 0,col="goldenrod2")
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-27-2.png)<!-- --> The
+above plots seem to show that removing the outliers did not alter the
+spread of the residuals too much, and now the plot looks more linear in
+form.
+
+``` r
+hist(x = mmod1$residuals, main = "Residuals", xlab = "Residuals",
+     col = "firebrick2", xlim = c(-15000, 20000), ylim = c(0, 100))
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-28-1.png)<!-- -->
+
+``` r
+hist(x = mmod1a$residuals, main = "Residuals (No Outliers)", xlab = "Residuals",
+     col = "firebrick2", xlim = c(-15000, 20000), ylim = c(0, 100))
+```
+
+![](car_pricing_files/figure-gfm/unnamed-chunk-28-2.png)<!-- -->
 
 The tails of the residual distribution plot also disappeared after
 removing the outliers.
