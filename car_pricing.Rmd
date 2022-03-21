@@ -1,0 +1,445 @@
+---
+title: "Fast Money: A Statistical Analysis of Car Pricing"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(tidyverse)
+library(scales)
+library(corrr)
+library(tidyr)
+library(ggplot2)
+library(stringr)
+```
+
+## Introduction
+
+In 1885, Karl Benz patented the first automobile that was powered by an internal combustion engine. Since then, cars have progressed rapidly with regard to their internal design, aesthetics, and manufacture. Today, there exists a dizzyingly vast array of models—ranging from dependable commuter vehicles such as the Honda Civic to record-breaking supercars like the Koenigsegg Jesko—and each boasts a combination of different features. Both for people who buy cars and those who sell them, a common question might be: Which characteristics of a car most influence how much it costs? Therefore, this project investigates a dataset that contains data regarding 205 different cars produced in recent years, with the goal of determining which aspects of a car—specifically with regard to design and performance—have the strongest effect on the car's price. As part of my analysis, I use a variety of statistical methods, namely correlation (specifically Pearson correlation), simple linear regression, and multiple linear regression. These tools allow me to investigate not only if certain variables are significantly associated, but also how much they influence each other and are affected by other variables.
+
+### Data Preprocessing
+
+*Original dataset, uploaded by Manish Kumar on Kaggle: https://www.kaggle.com/hellbuoy/car-price-prediction?select=CarPrice_Assignment.csv*
+
+Having downloaded the dataset from Kaggle as a .csv file, I read it in using `read.csv()` and stored the data in a data frame, called `cars`.
+
+```{r}
+file <- c("/Users/ghoye/Documents/CarPrice_Assignment.csv")
+cars <- read.csv(file, header = TRUE)
+kable(head(cars))
+```
+
+Upon examination of `cars`, one can see that the data frame consists of `r ncol(cars)` attributes and `r nrow(cars)` observations, each corresponding to a specific model of car. The variables include: a car's identification number (`car_ID`), risk factor associated with its price (`symboling`, on a scale of -3 to 3), model (`CarName`), fuel type (`fueltype`), aspiration (`aspiration`), number of doors (`doornumber`), body type (`carbody`), drive wheel (`drivewheel`), wheelbase (`wheelbase`), location of the engine (`enginelocation`), length (`carlength`), width (`carwidth`), height (`carheight`), curb weight (`curbweight`, weight without passengers or cargo), engine type (`enginetype`), number of cylinders (`cylindernumber`), engine size (`enginesize`), and fuel system (`fuelsystem`). There also are attributes concerning the car's bore ratio (`boreratio`, ratio of dimensions of the engine cylinder bore diameter to the piston stroke length), piston stroke length (`stroke`), compression ratio (`compression ratio`, comparing the volume of gas in the cylinder when the piston is at the top of a stroke versus the bottom), horsepower (`horsepower`), and peak number of revolutions per minute (`peakrpm`). Finally, there are variables that refer to the number of miles per gallon achieved in the city (`citympg`), miles per gallon on the highway (`highwaympg`), and price of the car (`price`).
+
+There was one typo that I found—the Porsche Panamera (observation 127), incorrectly spelled "Porcshce"—and, since the error only appears once in the otherwise clean dataset, I simply corrected the error manually in Microsoft Excel before importing the dataset. Now, the dataset (`cars`) is ready to be used for analysis.
+
+## Correlation
+
+Correlation measures the strength and direction of the linear relationship between two variables. Naturally, simply because two variables are correlated, it does not connote that one causes the other, but correlation can give us an idea of the nature of the association between two factors.
+
+For example, one can determine whether the size of a car's engine and the car's horsepower are correlated, and we can first examine a scatterplot of the data from those two variables.
+
+```{r}
+plot(cars$enginesize, cars$horsepower, col = alpha("firebrick2", 0.75), 
+     ylim = c(0, 300), xlim = c(0, 400),
+     xlab = "Engine Size", ylab = "Horsepower", main = "Car Engine Sizes and Horsepower")
+```
+The relationship between these two variables is linear and positive—as the engine size increases, so does the horsepower—and the points are grouped relatively close together.
+
+We can also calculate the correlation coefficient ($r$) to see exactly how strong this association is:
+
+```{r}
+cor(cars$enginesize, cars$horsepower)
+```
+
+Not surprisingly, the association between engine size and horsepower is very strong, at approximately `r round(cor(cars$enginesize, cars$horsepower), 2)*100`%.
+
+We can view the scatterplots of all variables (quantitative, continuous ones, that is) by using the `pairs()` function.
+
+```{r}
+pairs(cars[,c(10:14,17,19:26)]) # Using only quantitative/continuous variables
+```
+
+The sheer number of plots might appear overwhelming, but a closer look reveals that certain factors, such as the car's wheel base and its length, are strongly associated. We can also view plots of each variable's association with price specifically.
+
+```{r}
+cars_long <- gather(cars[,c(10:13,17,19:22, 24:26)], key, value, -price)
+# cars_long
+ggplot(cars_long, aes(x = price, y = value)) + geom_point() + facet_grid(. ~ key)
+```
+
+It appears from these plots that `enginesize` and `horsepower` might have a strong positive relationship with `price`, whereas `citympg` and `highwaympg` are negatively correlated with `price`. We can also see the respective correlation coefficients of all variables and price using the `correlate` function from the `corrr` package.
+
+```{r}
+cor_tib <- correlate(cars[,c(10:14,17,19:26)])
+cor_tib_price <- data.frame(matrix(data = c(cor_tib$term, cor_tib$price), nrow = length(cor_tib$term), ncol = 2))
+colnames(cor_tib_price) <- c("Variable", "r")
+cor_tib_price <- cor_tib_price[-(nrow(cor_tib_price)),]
+cor_tib_price$r <- round(as.numeric(cor_tib_price$r), 6)
+cor_tib_price <- cor_tib_price %>% arrange(desc(r))
+kable(cor_tib_price)
+```
+
+From these values, it is clear that `enginesize` and `horsepower`—along with `curbweight` and `carwidth`—are indeed positively correlated with `price`, and the two variables relating to miles per gallon are strongly, yet negatively correlated with price.
+
+```{r}
+plot(cars$curbweight, cars$price, col = alpha("firebrick2", 0.75), 
+     ylim = c(0, 60000), xlim = c(1000, 5000), cex.axis = 0.7,
+     xlab = "Curb Weight", ylab = "Price", main = "Car Curb Weights and Price")
+
+plot(cars$highwaympg, cars$price, col = alpha("firebrick2", 0.75), 
+     ylim = c(0, 60000), xlim = c(10, 60), cex.axis = 0.7,
+     xlab = "MPG (Highway)", ylab = "Price", main = "Car MPG (Highway) and Price")
+```
+
+## Simple Linear Regression
+
+Let us investigate exactly how much a particular variable can affect the price of a car, which can be determined using simple linear regression (SLR). In SLR, we designate one variable as the explanatory variable and another as the response variable; simply put, the former explains the change in the latter. We can, for instance, select the width of a car as the explanatory variable, and the price of the car as the response variable.
+
+```{r}
+smod1 <- lm(cars$price ~ cars$carwidth)
+smod1
+
+plot(cars$carwidth, cars$price, col = alpha("firebrick2", 0.75), 
+     ylim = c(0, 60000), xlim = c(60, 75), cex.axis = 0.7,
+     xlab = "Car Width", ylab = "Price", main = "Car Widths and Price")
+abline(smod1,col="goldenrod2")
+```
+
+As shown in the plot, the regression line fits the data reasonably well, with a good portion of the points falling around the line. Even so, there are several points that are further away from the line than the main grouping.
+
+The least-squares regression equation for the model is $\hat{y}$ = `r prettyNum(round(coef(summary(smod1))[1,1],3))` + `r round(coef(summary(smod1))[2,1],3)`$x$. Although the intercept $\hat{\beta}$~0~ = `r prettyNum(round(coef(summary(smod1))[1,1],3), big.mark = ",")` has no practical meaning in this context, $\hat{\beta}$~1~ can be interpreted as predicting that, for each additional inch in a car's width (although the dataset's creator did not specify the units used for car dimensions, inches is the only one that makes sense), the price of the car increases by approximately $`r prettyNum(round(coef(summary(smod1))[2,1],3), big.mark = ",")`.
+
+If we wanted to test whether $\beta$~1~ = 0, we could use an analysis of variance (ANOVA) table to calculate the appropriate test statistic for the hypothesis test, which can be conducted in five steps:
+
+Step 1) $H$~0~:  $\beta$~1~ = 0,
+        $H$~1~:  $\beta$~1~ $\neq$ 0,
+        $a$ = 0.05
+
+Step 2) For this test, I selected the $F$ statistic, which is $F$ = $\frac{Mean Sum of Squares (Regression)}{Mean Sum of Squares (Residual)}$ with 1 and $n$ - 2 degrees of freedom.
+
+```{r}
+# Calculate the critical value
+CV <- qt(1-0.05/2, df=nrow(cars)-2)
+CV
+```
+
+Step 3) The $F$-distribution critical value is $F$~1,n-2,a~ = $F$~1,`r nrow(cars)-2`,0.05~ = `r round(CV, 3)`. Therefore, $H$~0~ must be rejected if $F \ge `r round(CV, 3)`$. Otherwise, there is not sufficient evidence to reject the null hypothesis.
+
+Step 4) See the calculations below.
+
+```{r}
+# ANOVA table
+kable(anova(smod1))
+
+# Calculate the F statistic
+F <- anova(smod1)[1,3]/anova(smod1)[2,3]
+F
+
+# Sanity check
+# anova(smod1)[1,4]
+# summary(smod1)
+```
+
+Step 5) Because $F = `r F` > `r round(CV, 3)`$, there is sufficient evidence to reject the null hypothesis and conclude that $\beta$~1~ is not equal to 0. That is, there is a significant linear association.
+
+Furthermore, one can calculate $R$^2^, the estimate of the variability of the response variable given a value of the explanatory variable.
+
+```{r}
+# ANOVA table again for reference
+kable(anova(smod1))
+
+# Calculate regression sum of squares, residual sum of squares, and total sum of squares
+reg_SS <- anova(smod1)[1,2]
+res_SS <- anova(smod1)[2,2]
+total_SS <- reg_SS + res_SS
+
+# Calculate R^2
+r2 <- reg_SS / total_SS
+r2
+```
+
+According to the above calculations, $R$^2^ is `r r2`. This means that `r round((r2*100), 2)`% of the variability in the price of a car can be explained by the car's width.
+
+Finally, one can determine the confidence interval for $\beta$~1~ with a confidence level of 90%.
+
+```{r}
+confint(smod1, level = 0.9)
+```
+
+Using `confint()`, one can observe that the confidence interval for $\beta$~1~ at a level of 90% is `r round(confint(smod1, level = 0.9)[2,1],3)` and `r round(confint(smod1, level = 0.9)[2,2],3)`. Therefore, we can be confident that the true value for the slope of the least-squares regression line—the amount by which a car's price increases with each additional inch in width—lies within that range approximately 90% of the time if we conducted 100 different random samples. In other words, we can be 90% confident that the true value for $\beta$~1~ is contained in that interval. As it turns out, the value calculated earlier for $\beta$~1~ (`r round(coef(summary(smod1))[2,1],3)`) falls within in the range. Moreover, it would make sense that wider (bigger) cars might cost more than smaller ones.
+
+What if we wanted to know the influence that the number of miles per gallon (MPG) in the city has on the car's price? 
+
+Let us first look at a scatterplot of MPG in the city against car price.
+
+```{r}
+plot(cars$citympg, cars$price, col = alpha("firebrick2", 0.75), 
+     ylim = c(0, 60000), xlim = c(10, 60), cex.axis = 0.7,
+     xlab = "MPG (City)", ylab = "Price", main = "Car MPG (City) and Price")
+```
+
+As determined by the initial correlation coefficient that we calculated (`r round(cor_tib_price[12,2],2)`), the association between these two variables is moderately strong and negative, meaning that as the MPG in the city increases, the price tends to decrease. To some, the plot might also appear to be roughly linear, especially if the three points just to the left of $x$ = 50 were removed. However, we should first consult a residual plot, which visualizes the distances between the actual and predicted values of the response variable (price) for a given value of the explanatory variable (city MPG).
+
+```{r}
+smod2 <- lm(cars$price ~ cars$citympg)
+
+plot(x = smod2$fitted.values, y = smod2$residuals, main = "Residuals vs. Fitted Values", 
+     xlab = "Fitted Values", ylab = "Residuals", col=alpha("firebrick2", 0.75),
+     xlim = c(-10000, 25000), ylim = c(-15000, 25000))
+abline(h = 0,col="goldenrod2")
+```
+
+From this plot, it is clear that not only is the data nonlinear, but also that the variability in the response is not constant across the regression line. In fact, the data fans out as $x$ increases. Therefore, removing the supposed outlying points from the scatterplot would make no difference, because the data clearly violates a key assumption of linear regression—that the variability remains relatively constant.
+
+Returning to the previous example, the relationship between car width and price, we can view the corresponding residual plot:
+
+```{r}
+plot(x = smod1$fitted.values, y = smod1$residuals, main = "Residuals vs. Fitted Values", 
+     xlab = "Fitted Values", ylab = "Residuals", col=alpha("firebrick2", 0.75),
+     xlim = c(-5000, 35000), ylim = c(-20000, 30000))
+abline(h = 0,col="goldenrod2")
+```
+
+Obviously, there are quite a few stray points, but they generally flow straight across the regression line.
+
+```{r}
+hist(x = smod1$residuals, main = "Residuals", xlab = "Residuals",
+     col = "firebrick2", xlim = c(-20000, 40000), ylim = c(0, 150))
+```
+
+The distribution of the residuals is roughly bell-shaped, but there is a tail to the right, which might suggest the presence of outliers.
+
+```{r}
+plot(smod1, which = 1)
+```
+
+This plot has identified observations 17, 128, 129—the `r str_to_upper(cars[17,3])`, `r str_to_title(cars[128,3])`, and `r str_to_title(cars[129,3])`, respectively—as outliers, and observation 127 (`r str_to_title(cars[127,3])`) also appears to be an outlier. If we removed one, two, three, or all of those points we would obtain the following model results:
+
+```{r}
+# Original model
+smod1
+
+# Row 17 removed
+cars2 <- cars[-(c(17)),]
+smod1a <- lm(cars2$price ~ cars2$carwidth)
+smod1a
+#summary(smod1a)
+
+# Row 127 removed
+cars3 <- cars[-(c(127)),]
+smod1b <- lm(cars3$price ~ cars3$carwidth)
+smod1b
+#summary(smod1b)
+
+# Row 128 removed
+cars4 <- cars[-(c(128)),]
+smod1c <- lm(cars4$price ~ cars4$carwidth)
+smod1c
+#summary(smod1c)
+
+# Row 129 removed
+cars5 <- cars[-(c(129)),]
+smod1d <- lm(cars5$price ~ cars5$carwidth)
+smod1d
+#summary(smod1d)
+
+# Both rows 17 and 127 removed
+cars6 <- cars[-(c(17, 127)),]
+smod1e <- lm(cars6$price ~ cars6$carwidth)
+smod1e
+#summary(smod1e)
+
+# Both rows 17 and 128 removed
+cars7 <- cars[-(c(17, 128)),]
+smod1f <- lm(cars7$price ~ cars7$carwidth)
+smod1f
+#summary(smod1f)
+
+# Both rows 17 and 129 removed
+cars8 <- cars[-(c(17, 129)),]
+smod1g <- lm(cars8$price ~ cars8$carwidth)
+smod1g
+#summary(smod1g)
+
+# Both rows 127 and 128 removed
+cars9 <- cars[-(c(127, 128)),]
+smod1h <- lm(cars9$price ~ cars9$carwidth)
+smod1h
+#summary(smod1h)
+
+# Both rows 127 and 129 removed
+cars10 <- cars[-(c(127, 129)),]
+smod1i <- lm(cars10$price ~ cars10$carwidth)
+smod1i
+#summary(smod1i)
+
+# Both rows 128 and 129 removed
+cars11 <- cars[-(c(128, 129)),]
+smod1j <- lm(cars11$price ~ cars11$carwidth)
+smod1j
+#summary(smod1j)
+
+# Rows 17, 127, and 128 removed
+cars12 <- cars[-(c(17, 127, 128)),]
+smod1k <- lm(cars12$price ~ cars12$carwidth)
+smod1k
+#summary(smod1k)
+
+# Rows 17, 127, and 129 removed
+cars13 <- cars[-(c(17, 127, 129)),]
+smod1l <- lm(cars13$price ~ cars13$carwidth)
+smod1l
+#summary(smod1l)
+
+# Rows 17, 128, and 129 removed
+cars14 <- cars[-(c(17, 128, 129)),]
+smod1m <- lm(cars14$price ~ cars14$carwidth)
+smod1m
+#summary(smod1m)
+
+# Rows 127, 128, and 129 removed
+cars15 <- cars[-(c(127, 128, 129)),]
+smod1n <- lm(cars15$price ~ cars15$carwidth)
+smod1n
+#summary(smod1n)
+
+# All outliers removed
+cars16 <- cars[-(c(17, 127, 128, 129)),]
+smod1o <- lm(cars16$price ~ cars16$carwidth)
+smod1o
+#summary(smod1o)
+```
+
+Of these models, the one that removes observations 17, 128, and 129 (model `smod1m`) performs the best in terms of matching the original $\beta$~1~ estimate of `r round(coef(summary(smod1))[2,1],3)`. That being said, since none of the points seems to be an influence point (that is, a point that has a significant impact on the regression line calculations), the model that removes all identified outliers (`smod1o`) would be preferred.
+
+```{r}
+plot(cars16$carwidth, cars16$price, col = alpha("firebrick2", 0.75), 
+     ylim = c(0, 60000), xlim = c(60, 75), cex.axis = 0.7,
+     xlab = "Car Width", ylab = "Price", main = "Car Widths and Price")
+abline(smod1o,col="goldenrod2")
+
+plot(x = smod1o$fitted.values, y = smod1o$residuals, main = "Residuals vs. Fitted Values", 
+     xlab = "Fitted Values", ylab = "Residuals", col=alpha("firebrick2", 0.75),
+     xlim = c(-5000, 35000), ylim = c(-20000, 30000))
+abline(h = 0,col="goldenrod2")
+
+hist(x = smod1o$residuals, main = "Residuals (Outliers Removed)", xlab = "Residuals",
+     col = "firebrick2", xlim = c(-20000, 30000), ylim = c(0, 150))
+```
+
+Not only does the new model remove the outliers, but the tail in the histogram has also been eliminated, resulting in a more normal-looking distribution.
+
+## Multiple Linear Regression
+
+Having performed a regression with a single explanatory variable, we can also create a model with multiple factors, such as the car's engine size, width, peak revolutions per minute (RPM), and bore ratio.
+
+```{r}
+mmod1 <- lm(cars$price ~ cars$enginesize + cars$carwidth + cars$peakrpm + cars$boreratio)
+mmod1
+#summary(mmod1)
+```
+
+Hence, the least-squares regression equation would be: $\hat{y}$ = -83547.018 + `r round(coef(summary(mmod1))[2,1],3)`$x$~EngineSize~ + `r round(coef(summary(mmod1))[3,1],3)`$x$~Width~ + `r round(coef(summary(mmod1))[4,1],3)`$x$~PeakRPM~ $-$ `r abs(round(coef(summary(mmod1))[5,1],3))`$x$~BoreRatio~.
+
+We can test whether these factors are truly associated with a car's price, using the $F$-test.
+
+Step 1) $H$~0~:  $\beta$~EngineSize~ = $\beta$~Width~ = $\beta$~PeakRPM~ = $\beta$~BoreRatio~ = 0,
+        $H$~1~:  $\beta$~EngineSize~ $\neq$ 0 and/or $\beta$~Width~ $\neq$ 0 and/or $\beta$~PeakRPM~ $\neq$ 0 and/or $\beta$~BoreRatio~ $\neq$ 0,
+        $a$ = 0.05
+        
+Step 2) For this (global) test, I decided to use the $F$-statistic, which is $F$ = $\frac{Mean Sum of Squares (Regression)}{Mean Sum of Squares (Residual)}$ with 4 and $n - 4 - 1$ = `r nrow(cars)`$ - 4 - 1$ = `r nrow(cars) - 4 - 1` degrees of freedom.
+
+Step 3) If $p \le \alpha$, then the null hypothesis, $H$~0~, must be rejected. If not, then $H$~0~ cannot be rejected.
+
+Step 4) The values for the $F$-statistic and $p$-value can be calculated by calling the `summary()` function.
+
+```{r}
+summary(mmod1)
+```
+
+Step 5) The $F$-statistic is 220.6, and the $p$-value is less than 2.2 $*$ 10^-16^. Because $p < \alpha$, there is sufficient evidence at the $\alpha$ = 0.05 level to reject $H$~0~, meaning that there is a significant linear association between a car's price and—taken all together—its engine size, width, peak RPM, and bore ratio.
+
+Now, having determined that the overall model is significant, we can see if the individual predictors are also significant: Engine size has a $p$-value of less than 2.2 $*$ 10^-16^, width a $p$-value of 0.0000000986, peak RPM a $p$-value of 0.00000291, and bore ratio a $p$-value of 0.297. That is, engine size is significant given width, peak RPM, and bore ratio, and width is significant when controlling for engine size, peak RPM, and bore ratio. Peak RPM is also significant, adjusting for engine size, width, and bore ratio. Bore ratio, however, is not significant, since its $p$-value is greater than the confidence level (0.05). 
+
+```{r}
+confint(mmod1)
+```
+
+The three significant variables—engine size, width, and peak RPM—all fall within the respective 95% confidence intervals, meaning that we can be 95% confident that the true value for each variable lies within its particular range, after controlling for the other variables.
+
+Therefore, one can draw a few conclusions from the model: For each 1-unit increase in engine size (I could not determine which unit of measure was used)—adjusting for width, peak RPM, and bore ratio—the price of the car increases by \$134.26. For each one-inch increase in width—controlling for engine size, peak RPM, and bore ratio—the price increases by \$951.28. Lastly, for each one-revolution-per-minute increase in peak RPM—taking the other factors into account—the price increases by only \$2.56. 
+
+```{r}
+plot(x = mmod1$fitted.values, y = mmod1$residuals, main = "Residuals vs. Fitted Values", 
+     xlab = "Fitted Values", ylab = "Residuals", col=alpha("firebrick2", 0.75),
+     xlim = c(-10000, 50000), ylim = c(-10000, 20000))
+abline(h = 0,col="goldenrod2")
+```
+
+Upon viewing a residual plot of this multiple linear regression model, the form is not very linear, but that can possibly be resolved by removing outliers.
+
+```{r}
+MLR_box <- boxplot(x = mmod1$residuals, main = "Residuals", ylab = "Residuals", col=c("red"),
+        horizontal=TRUE, ylim = c(-10000, 20000))
+MLR_box
+```
+
+A boxplot of the residuals has identified several outliers:
+
+```{r}
+MLR_box$out
+```
+
+Those points correspond to the `r str_to_upper(cars[15,3])`, `r str_to_upper(cars[17,3])`, `r str_to_title(substr(cars[50,3],1,7))``r str_to_upper(substr(cars[50,3],8,9))`, `r str_to_title(cars[102,3])`, `r str_to_title(cars[104,3])`, `r str_to_title(cars[127,3])`, `r str_to_title(cars[128,3])`, and `r str_to_title(cars[129,3])`, respectively.
+
+Since we have already identified and removed some of these points in previous models, let us see how much a model with all of them removed compares with the original MLR model.
+
+```{r}
+# Original model
+mmod1 <- lm(cars$price ~ cars$enginesize + cars$carwidth + cars$peakrpm + cars$boreratio)
+mmod1
+
+# All outliers removed
+cars17 <- cars[-(c(15, 17, 50, 102, 104, 127, 128, 129)),]
+mmod1a <- lm(cars17$price ~ cars17$enginesize + cars17$carwidth + cars17$peakrpm + cars17$boreratio)
+mmod1a
+
+summary(mmod1)
+summary(mmod1a)
+```
+
+For the most part, the calculated $\beta$ intercepts did not change too drastically in the new model—except for that of bore ratio, but as with the original model, it was identified as a significant predictor of car prices. The $R$^2^ values are fairly similar, and the $p$-values are the same.
+
+```{r}
+plot(x = mmod1$fitted.values, y = mmod1$residuals, main = "Residuals vs. Fitted Values (Original)", 
+     xlab = "Fitted Values", ylab = "Residuals", col=alpha("firebrick2", 0.75),
+     xlim = c(-10000, 50000), ylim = c(-10000, 20000))
+abline(h = 0,col="goldenrod2")
+
+plot(x = mmod1a$fitted.values, y = mmod1a$residuals, main = "Residuals vs. Fitted Values (No Outliers)", 
+     xlab = "Fitted Values", ylab = "Residuals", col=alpha("firebrick2", 0.75),
+     xlim = c(-10000, 50000), ylim = c(-10000, 20000))
+abline(h = 0,col="goldenrod2")
+```
+The above plots seem to show that removing the outliers did not alter the spread of the residuals too much, and now the plot looks more linear in form.
+
+```{r}
+hist(x = mmod1$residuals, main = "Residuals", xlab = "Residuals",
+     col = "firebrick2", xlim = c(-15000, 20000), ylim = c(0, 100))
+hist(x = mmod1a$residuals, main = "Residuals (No Outliers)", xlab = "Residuals",
+     col = "firebrick2", xlim = c(-15000, 20000), ylim = c(0, 100))
+```
+
+The tails of the residual distribution plot also disappeared after removing the outliers.
+
+## Conclusion
+
+As the above statistical analyses demonstrate, various factors seem to influence how a car is priced. The width of a car, for example, appears to be a significant predictor of its price, and the SLR model that I created (`smod1o`) indicates that, based upon the data, for each additional inch of width, the price increases by approximately $`r prettyNum(round(coef(summary(smod1o))[2,1],0), big.mark = ",")`. This does make some sense, in that larger cars can cost more. However, there are many models of sports cars that are much smaller than, say, a Ford F-150 truck, but are priced much higher. Consequently, there might be extreme examples in the data that bias the calculations in favor of larger vehicles, or it may simply be the case that the number of larger cars outnumber the smaller, yet more expensive ones. 
+
+In the MLR model, I selected four variables—engine size, width, peak RPM, and bore ratio, which had different correlation coefficients with price—and determined how they affected the cost of a car. From the model without outliers (`mmod1a`), it is clear that engine size, width, and peak RPM are significant factors with regard to predicting a car's price. For each 1-unit increase in engine size—adjusting for width, peak RPM, and bore ratio—the price of the car increases by about \$120. For each one-inch increase in width—controlling for engine size, peak RPM, and bore ratio—the price increases by \$1,1279. Lastly, for each one-revolution-per-minute increase in peak RPM—taking the other factors into account—the price increases by only \$1.70. Apparently, then, the width (or perhaps more generally, size) of a car has the greatest effect on the price, at least out of the variables employed in the model. 
+
+Of course, simply because the models generated these results from the data, one should be cautious in extrapolating such conclusions beyond the cars in the dataset, or even just to other datasets. This is because, among other reasons, I could not verify the exact specifications used in the data—even the units of measure—nor the specific year that a given car was manufactured, as designs of the same model of car can vary relatively drastically over time. Furthermore, it is doubtable that the width of the car is the single greatest predictor of a car's price; as with many other products in the world today, simply the brand of a car can influence how it is priced. This would be another avenue of analysis in the future, to determine whether categorical variables such as the car's manufacturer has a specific, quantifiable effect on the price, which perhaps could be conducted using logistic regression. Moreover, the distribution of individual variables such as horsepower, when plotted against price, were nonlinear, and therefore unusable in linear regression models. Perhaps this issue could be resolved by transforming the data in some way. Finally, collinearity was a danger throughout my analyses, since several variables, like a car's width and length, are very closely related. I realize that the size of the engine might impact the bore ratio and peak RPM, for instance, but those seemed to be the least problematic variables to use. 
+
+All in all, it is quite clear that just as there are many features and components of a car, so too are there many factors that influence how much a car costs.
