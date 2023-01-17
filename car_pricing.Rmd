@@ -1,5 +1,5 @@
 ---
-title: "Fast Money: A Statistical Analysis of Car Pricing"
+title: "Driving Factors: A Statistical Analysis of Car Pricing"
 output: github_document
 ---
 

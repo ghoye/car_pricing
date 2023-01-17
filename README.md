@@ -1,4 +1,4 @@
-Fast Money: A Statistical Analysis of Car Pricing
+Driving Factors: A Statistical Analysis of Car Pricing
 ================
 
 ## Introduction
